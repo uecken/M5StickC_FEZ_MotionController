@@ -2,7 +2,7 @@
 
 ## How to
  - This controller has 3 mode. You can change the mode by press M5-Button for 1 second.
-   - Fantaze Earth Zero
+   - Fantazy Earth Zero
    - Fortnite (some FPS)
    - Mouse
  - Roll/Pitch/Yaw are used to recognize XY cordinates and skill-motion by Mahony-filter.
