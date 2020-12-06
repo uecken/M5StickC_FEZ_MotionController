@@ -4,9 +4,9 @@ float accOffsetX = -0.01, accOffsetY = -0.01, accOffsetZ = 0.09;
 float gyroX = 0, gyroY = 0, gyroZ = 0;  
 float gyroOffsetX = 3.93, gyroOffsetY = -14.56, gyroOffsetZ = 2.48;  
 float pitch = 0.0,roll=0.0,yaw=0.0;
-float pitchRef=-11.5 , rollRef=1.1 , yawRef=0;
+float pitchRef=0 , rollRef=0 , yawRef=0;
 //float pitchOffset=1.1 , rollOffset=-11.5 , yawOffset=0;
-float pitchOffset=0 , rollOffset=0 , yawOffset=0;
+float pitchOffset=0 , rollOffset=0 , yawOffset=-8.5;
 float dt;
 float velX = 0, velY = 0, velZ = 0;
 float posX = 0, posY = 0, posZ = 0;
@@ -14,33 +14,26 @@ float gyroVelX = 0, gyroVelY = 0, gyroVelZ = 0;
 
 #define INTERVAL 3
 float accXs[INTERVAL],accYs[INTERVAL],accZs[INTERVAL]; 
-unsigned long acci = 0;
+long acci = 0;
 float gyroXs[INTERVAL],gyroYs[INTERVAL],gyroZs[INTERVAL]; 
-unsigned long gyroi = 0;
+long gyroi = 0;
 
-//#include <MadgwickAHRS.h>
-//Madgwick filter;
-//#include "mahony/MahonyAHRS.h"
-//Mahony filter;
-
-//#include <SensorFusion.h>
-//SF filter;
-//float deltat;
 
 //CLock
 int Fs =150;
 int txFreq = 75;
 unsigned long microsPerReading, microsPrevious;
-unsigned long txcount=0;
+long txcount=0;
 
 //BLE
 String mode;
-#include <BleMouse.h>  // https://github.com/T-vK/ESP32-BLE-Mouse]
-BleMouse bleMouse;
+//#include <BleMouse.h>  // https://github.com/T-vK/ESP32-BLE-Mouse]
+//BleMouse bleMouse;
+#include <BleCombo.h>
 int skillSelectCount = 0;
 int skillExecCount = 0;
-int skillSelectTxTimes = 20;//ゲームパッドが繋がっていない場合、最低20回必要
-int skillExecTxTimes = 20;//ゲームパッドが繋がっていない場合、最低20回必要
+int skillSelectTxTimes = 1;//ゲームパッドが繋がっていない場合、最低20回必要。戦争中は50回がよいか？ 多すぎるとスキル発生後の姿勢推定誤差が大きい
+int skillExecTxTimes = 1;//ゲームパッドが繋がっていない場合、最低20回必要
 int skillStopCount = 0;
 boolean doneSkill = 0;
 boolean scrolledUp = 0;
@@ -50,11 +43,12 @@ boolean skillSwitchPrevious = 0;
 int skillSelectWait = 30; //BLEゲームパッドが繋がっていない場合50ms必要
 boolean G36Switch = 0;
 boolean G36SwitchPrevious = 0;
+boolean skillReset = 0;
 
 String skillMode;
 int skillMotionCount=0;
 String initialMotion;
-int waitCount = 20;
+int waitCount = 10;
 
 //Unwrapping Yaw
 int Nwrap=0;
@@ -74,7 +68,7 @@ boolean viewSwitch = 0;
 boolean viewSwitchPrevious = 0;
 String viewMode = "low";
 String viewMode2 = "gyro";
-String handMode = "single";
+String handMode = "Daiken";
 //boolean viewFlag = 1;
 //long txMoveCnt=0;
 
@@ -165,13 +159,12 @@ float  WRAPPING_YAW_M5AHRS() { // Determines if a phase wrap/unwrap occured and 
     // Compare the previous theat to the current yaw to see if a wrap occured.
     Nwrap = Nwrap + 1; // If so, add 1 to the number of wraps.
   }
-  else if ((preYaw) < (0) && (yaw >= 90)) {
+  else if ((preYaw < 0) && (yaw >= 90)) {
     // If an unwrap occured (a phase wrap in the other direction)...
     Nwrap = Nwrap - 1; // ...then subtract 1 from the number of wraps.
   }
   preYaw = yaw; // Store the current yaw for the next cycle
   unwrapYaw = yaw + (float)Nwrap*360.0;
-  
   return unwrapYaw;
 }
 
@@ -195,8 +188,10 @@ void setup() {
     microsPerReading = 1000000 / Fs;
     microsPrevious = micros();
 
-    bleMouse.begin();
-    //bleGamepad.begin();w
+    //bleMouse.begin();
+    //bleGamepad.begin();
+    Keyboard.begin();
+    Mouse.begin();
         
     digitalWrite(10, HIGH);
     M5.Lcd.setCursor(0, 0);
@@ -207,7 +202,7 @@ void setup() {
 
 
 void loop() {
-    if ((bleMouse.isConnected() && (micros() - microsPrevious >= microsPerReading))) {
+    if ((Keyboard.isConnected() && (micros() - microsPrevious >= microsPerReading))) {
 /* ---Roll/Pitch/Yawの計算---*/
       M5.IMU.getGyroData(&gyroX, &gyroY, &gyroZ);
       M5.IMU.getAccelData(&accX, &accY, &accZ);
@@ -220,7 +215,7 @@ void loop() {
       gyroZ -=gyroOffsetZ;       
       pitch -=pitchOffset; 
       roll -= rollOffset;
-      yaw -= yawOffset;
+      yaw -= yawOffset; //★最小値-188.5。原因はgyroZの補正ができていないからか？一時的に+8.5して補正する。
       
       //deltat = filter.deltatUpdate();
       //filter.updateIMU(gyroX/0.49, gyroY/0.49, gyroZ/0.49, accX, accY, accZ);
@@ -241,7 +236,7 @@ void loop() {
       //M5.Lcd.printf("%6.2f %6.2f %6.2f", roll, pitch, yaw);
       //Serial.printf("%d %d %6.2f, %6.2f, %6.2f,%6.2f, %6.2f, %6.2f, %6.2f, %6.2f, %6.2f  \r\n",txcount,skillMotionCount,roll,pitch,yaw, accX, accY, accZ,gyroX,gyroY,gyroZ);
       //Serial.printf("%d %s %4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f \r\n",txcount%10000,skillMode,roll,pitch,yaw, accX, accY, accZ,gyroX,gyroY,gyroZ);
-      Serial.printf("%d %s %d,%d,%d,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f \r\n",txcount%10000,skillMode,skillSwitch,G36Switch,viewSwitch,roll,pitch,yaw, accX, accY, accZ,gyroX,gyroY,gyroZ);
+      Serial.printf("%ld %s %d,%d,%d,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f,%4.1f \r\n",txcount%10000,skillMode.c_str(),skillSwitch,G36Switch,viewSwitch,roll,pitch,yaw, accX, accY, accZ,gyroX,gyroY,gyroZ,unwrapYaw);
 
       //=====スキル判定・実行======
       skillSwitchPrevious = skillSwitch;
@@ -256,231 +251,185 @@ void loop() {
 
   if(contMode == "FEZ"){
     //====方法１：姿勢判定====
-    if(skillSwitch == 1 && G36Switch ==0){
+    if(skillSwitch == 1 && G36Switch ==0 && handMode == "Daiken"){
       if(doneSkill == 0){
         //スキル選択
-        if(skillMotionCount == 0){
+        skillMotionCount++;
+        if(skillMotionCount == 1){
           /*if(abs(roll) >=0 && abs(roll) <= 40){
             skillMode = "1";//アサルト
           }
           else*/ 
-          if(abs(roll) < 50 && (pitch >= -20 && pitch < 60)){
+          if(abs(roll) < 50 && (pitch >= -20 && pitch < 50)){
             skillMode = "2";//アサルト
-            while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}
+            Keyboard.press(0x32);
+            //while(skillSelectCount<skillSelectTxTimes){Mouse.press(MOUSE_MIDDLE); skillSelectCount++;}
           }
           else if((pitch < -20 && pitch >-70) && (roll >= 30 && roll <130)){
             skillMode = "7";//スマ
-            while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_FORWARD); skillSelectCount++;}
-            //delay(skillSelectWait);
+            Keyboard.press(0x37);
+            //while(skillSelectCount<skillSelectTxTimes){Mouse.press(MOUSE_FORWARD); skillSelectCount++;}
           }
           else if(pitch <= -20 && (roll<30 && roll>-120)){
             skillMode = "4";//ヘビスマ
-            while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_BACK); skillSelectCount++;}
-            bleMouse.move(0,0,1);
+            Keyboard.press(0x34);
+            //while(skillSelectCount<skillSelectTxTimes){Mouse.press(MOUSE_BACK); skillSelectCount++;}
+            //Mouse.move(0,0,1);
           }
           else if(abs(roll) >=130 && abs(pitch) <=40){
             skillMode = "3";//ランペ
-            while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}
-            bleMouse.move(0,0,-1);            
-          }
+            Keyboard.press(0x33);
+            //while(skillSelectCount<skillSelectTxTimes){Mouse.press(MOUSE_MIDDLE); skillSelectCount++;}
+            //Mouse.move(0,0,-1);            
+          }/*
           else if(pitch >= 50 ){
-            skillMode = "5";//ストスマ
-            while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_BACK); skillSelectCount++;}
-          }
-          else if(roll >60 && roll <= 140 && abs(pitch) < 40 ){
-            skillMode = "8";//
-            while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_FORWARD); skillSelectCount++;}
-            bleMouse.move(0,0,-1);
-          }
-          /*else if(roll >=40 && roll <= 140 && abs(pitch)<40 ){
-            skillMode = "5or6or7or8";//
+            skillMode = "1";//クラン
+            Keyboard.press(0x31);
+            //while(skillSelectCount<skillSelectTxTimes){Mouse.press(MOUSE_BACK); skillSelectCount++;}
           }*/
-
+          else if(roll >60 && roll <= 140 && abs(pitch) < 40 ){
+            skillMode = "1";//
+            Keyboard.press(0x31);
+            //while(skillSelectCount<skillSelectTxTimes){Mouse.press(MOUSE_FORWARD); skillSelectCount++;}
+            //Mouse.move(0,0,-1);
+          }
+        }else if(skillMotionCount > 5){
+          if(skillMode=="2" && (accX >= 1.2 || accZ < -1.2 ||gyroZ < -1000)){//アサルト
+            if(DEBUG)Serial.println("accX < -3, skill2");
+            //while(skillSelectCount<skillSelectTxTimes){Mouse.press(MOUSE_MIDDLE); skillSelectCount++;}
+            //delay(skillSelectWait);
+            //while(skillExecCount<skillExecTxTimes){Mouse.press(MOUSE_LEFT); skillExecCount++;}
+            Keyboard.press(0x85);
+            doneSkill = 1;
+          }
+          else if(skillMode=="3" && (gyroZ < -1000 || accX > 1.2)){//ランペ
+            if(DEBUG)Serial.println("accZ < -3,skill3");
+            Keyboard.press(0x85);
+            doneSkill = 1;
+          }
+          else if(skillMode=="4" && (gyroZ <= -1000 || accX >1.2)){//ヘビスマ
+            if(DEBUG)Serial.println("accX > 3,skill4");
+            Keyboard.press(0x85);
+            doneSkill = 1;
+          }
+         else if(skillMode=="5" && (accX > 1.2 || gyroZ <= -1000)){//ストスマ
+            if(DEBUG)Serial.println("accY > 3,skill5");
+            Keyboard.press(0x85);
+            doneSkill = 1;
+          }
+          else if(skillMode=="7" &&( gyroZ < -1000 || accX > 1.3)){
+            if(DEBUG)Serial.println("gyroZ < -1500,skill7");
+            Keyboard.press(0x85);
+            doneSkill = 1;
+          }
+          else if(skillMode=="1" && gyroX > 500){
+            if(DEBUG)Serial.println("gyroX < -1500,skill8");
+            Keyboard.press(0x85);
+            doneSkill = 1; 
+          }
         }
-        skillMotionCount++;
- 
-       
-        /*if(skillMode=="1" && gyroY > 1500){//クランブル
-          if(DEBUG)Serial.println("accZ > 3, skill1");
-          while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}
-          bleMouse.move(0,0,1);
-          delay(skillSelectWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1;
-        }*/
-        if(skillMode=="2" && (accX >= 1.2 || accZ < -1.2 |gyroZ < -1000)){//アサルト
-          if(DEBUG)Serial.println("accX < -3, skill2");
-          //while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}
-          //delay(skillSelectWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1;
-        }
-        else if(skillMode=="3" && (gyroZ < -1000 || accX > 1.2)){//ランペ
-          if(DEBUG)Serial.println("accZ < -3,skill3");
-          //while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}
-          //bleMouse.move(0,0,-1);
-          //delay(skillSelectWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1;
-        }
-        else if(skillMode=="4" && gyroZ <= -1000 || accX >1.2){//ヘビスマ
-          if(DEBUG)Serial.println("accX > 3,skill4");
-          //while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_BACK); skillSelectCount++;}
-         // bleMouse.move(0,0,1);
-         // delay(skillSelectWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1;
-        }
-       else if(skillMode=="5" && (accX > 1.2 || gyroZ <= -1000)){//ストスマ
-          if(DEBUG)Serial.println("accY > 3,skill5");
-          //while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_BACK); skillSelectCount++;}
-          //delay(skillSelectWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1;
-        }
-        /*else if(skillMode=="5or6or7or8" && accY > 3){
-          if(DEBUG)Serial.println("accY > 3,skill6");
-          while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_BACK); skillSelectCount++;}
-          bleMouse.move(0,0,-1);
-          delay(skillSelectWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1;
-        }*/
-        else if(skillMode=="7" && gyroZ < -1000 || accX > 1.3){
-          if(DEBUG)Serial.println("gyroZ < -1500,skill7");
-          //while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_FORWARD); skillSelectCount++;}
-          //delay(skillSelewactWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1;
-        } 
-        else if(skillMode=="8" && gyroX > 1500){
-          if(DEBUG)Serial.println("gyroX < -1500,skill8");
-          //while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_FORWARD); skillSelectCount++;}
-          //bleMouse.move(0,0,-1);
-          //delay(skillSelectWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1; 
-        }
-        /*else if(skillMode=="8" && (accX > 1.0 || gyroZ <= -1000)){//ストスマ
-          if(DEBUG)Serial.println("accY > 3,skill5");
-          while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_BACK); skillSelectCount++;}
-          //delay(skillSelectWait);
-          while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
-          doneSkill = 1;
-        }*/
       }
     }
     //===方法２：加速度・ジャイロ判定===
-    //スキル選択⇒スキルホイール選択⇒スキル実行の順に行う。スキルによってはスキルホイール選択が不要。
-    //具体例では、　bleMouse.click(MOUSE_BACK) => bleMouse.move(0,0,-1); => bleMouse.click(MOUSE_LEFT)。
-    //スキル選択後、skillMotionCountが10になるまで何もせず、skillMotionCountが10になったときにスキル実行するといったカウント待機時間を設けている。
-    //理由は、bleMouseでFEZにスキルホイール選択すると、最大３０ｍｓ？程度のランダム時間を要するため。
-    //また、スキル選択、スキル実行に限り、失敗する可能性があるため、skillSelectTxTimes=20、skillExecTxTimes=20のように送信回数を20回にしている。
-    //尚、スキルホイール選択は必ず成功する。
-    //下記コードは、実行周期６ms(≒1/150)、移動周期33ms(≒1/(150/30))の際に98%程成功する。
-    else if(skillSwitch == 1 && G36Switch == 1 ){
+    else if(skillSwitch == 1 && G36Switch == 0){
       if(doneSkill == 0){
         if(accX > 2.5 || initialMotion == "accX+"){
-            if(skillMotionCount==0){while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}}
-            else if(skillMotionCount==1){bleMouse.move(0,0,1);}
-            else if(skillMotionCount==waitCount){while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}doneSkill = 1;}
+            if(skillMotionCount==0){Keyboard.press(0x31);}
+            else if(skillMotionCount==waitCount){Keyboard.press(0x85); doneSkill = 1;}
             skillMotionCount++;
             initialMotion = "accX+";
             skillMode = "1";
           }
         else if(accZ > 2.5 || initialMotion == "accZ+"){
-            if(skillMotionCount==0){while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}}
-            else if(skillMotionCount==1){}
-            else if(skillMotionCount==waitCount){while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}doneSkill = 1;}
+            if(skillMotionCount==0){Keyboard.press(0x32);}
+            else if(skillMotionCount==waitCount){Keyboard.press(0x85); doneSkill = 1;}
             skillMotionCount++;
             initialMotion = "accZ+";
             skillMode = "2";
         }
         else if(accX < -2.5 || initialMotion == "accX-"){
-            if(skillMotionCount==0){while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}}
-            else if(skillMotionCount==1){bleMouse.move(0,0,-1);}
-            else if(skillMotionCount==waitCount){while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}doneSkill = 1;}
+            if(skillMotionCount==0){Keyboard.press(0x33);}
+            else if(skillMotionCount==waitCount){Keyboard.press(0x85); doneSkill = 1;}
             skillMotionCount++; 
             initialMotion = "accX-";
             skillMode = "3";     
         }
         else if(accZ < -2.5 || initialMotion == "accZ-"){
-            if(skillMotionCount==0){while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_MIDDLE); skillSelectCount++;}}
-            else if(skillMotionCount==1){bleMouse.move(0,0,-1);bleMouse.move(0,0,-1);}
-            else if(skillMotionCount==waitCount){while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;} doneSkill = 1;}
+            if(skillMotionCount==0){Keyboard.press(0x34);}
+            else if(skillMotionCount==waitCount){Keyboard.press(0x85); doneSkill = 1;}
             skillMotionCount++;
             initialMotion = "accZ-";
             skillMode = "4";
         }
       }
     }
-    else if(G36Switch == 1){
+    else if(skillSwitch == 0 && G36Switch == 1){
       if(doneSkill == 0){
         if(accX > 2.5 || initialMotion == "accX+"){
-            if(skillMotionCount==0){while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_BACK); skillSelectCount++;}}
-            else if(skillMotionCount==1){}
-            else if(skillMotionCount==waitCount){while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}doneSkill = 1;}
+            if(skillMotionCount==0){Keyboard.press(0x35);}
+            else if(skillMotionCount==waitCount){Keyboard.press(0x85); doneSkill = 1;}
             skillMotionCount++;
             initialMotion = "accX+";
             skillMode = "5";
           }
         else if(accZ > 2.5 || initialMotion == "accZ+"){
-            if(skillMotionCount==0){while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_BACK); skillSelectCount++;}}
-            else if(skillMotionCount==1){bleMouse.move(0,0,-1);}
-            else if(skillMotionCount==waitCount){while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}doneSkill = 1;}
+            if(skillMotionCount==0){Keyboard.press(0x36);}
+            else if(skillMotionCount==waitCount){Keyboard.press(0x85); doneSkill = 1;}
             skillMotionCount++;
             initialMotion = "accZ+";
             skillMode = "6";
         }
         else if(accX < -2.5 || initialMotion == "accX-"){
-            if(skillMotionCount==0){while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_FORWARD); skillSelectCount++;}}
-            else if(skillMotionCount==1){}
-            else if(skillMotionCount==waitCount){while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;}doneSkill = 1;}
+            if(skillMotionCount==0){Keyboard.press(0x37);}
+            else if(skillMotionCount==waitCount){Keyboard.press(0x85); doneSkill = 1;}
             skillMotionCount++; 
             initialMotion = "accX-";
             skillMode = "7";     
         }
         else if(accZ < -2.5 || initialMotion == "accZ-"){
-            if(skillMotionCount==0){while(skillSelectCount<skillSelectTxTimes){bleMouse.click(MOUSE_FORWARD); skillSelectCount++;}}
-            else if(skillMotionCount==1){bleMouse.move(0,0,-1);}
-            else if(skillMotionCount==waitCount){while(skillExecCount<skillExecTxTimes){bleMouse.click(MOUSE_LEFT); skillExecCount++;} doneSkill = 1;}
+            if(skillMotionCount==0){Keyboard.press(0x38);}
+            else if(skillMotionCount==waitCount){Keyboard.press(0x85); doneSkill = 1;}
             skillMotionCount++;
             initialMotion = "accZ-";
             skillMode = "8";
         }
       }
+    }else if(skillSwitch == 1 && G36Switch == 1 && viewSwitch == 1){
+      //アイテムポケット3実行
+      if(skillMotionCount==0){Keyboard.press(0x24);}
+      else if(skillMotionCount==waitCount){Keyboard.press(0x66);}
+      skillMotionCount++;
     }
-    
     //===方法３：Bボタンでスキル選択・実行===
     else if(doneSkill == 0){
         //1秒押下で選択スキル連続実行
         if(M5.BtnB.pressedFor(1000)){
-          bleMouse.click(MOUSE_LEFT);
+          //Mouse.press(MOUSE_LEFT);
+          Mouse.click();
         }
         
-        //1秒押下で選択スキル実行
-        if(M5.BtnB.wasReleasefor(500)){
-          while(skillExecCount<10){bleMouse.click(MOUSE_LEFT); skillExecCount++;}
+        //1秒押下
+        else if(M5.BtnB.wasReleasefor(500)){
+          Mouse.move(0,0,1);
         }
         
-        //200m秒押下で選択スキルを上へ移動。これは一回入力で100%成功する。
+        //200m秒押下で選択スキルを下へ移動。これは一回入力で100%成功する。
         else if(M5.BtnB.wasReleasefor(200)){
           Serial.println("Scroll Up");
-          bleMouse.move(0,0,1);
-          //scrolledUp = 1;
+          Mouse.move(0,0,-1);
         }
     
-        //200m秒以下押下で選択スキルを下へ移動。これは一回入力で100%成功する。
-        else if(M5.BtnB.wasReleasefor(1)){
+        //200m秒以下押下で左クリック。これは一回入力で100%成功する。
+        else if(M5.BtnB.wasPressed()){
           Serial.println("Scroll Down");
-          bleMouse.move(0,0,-1);
-          //scrolledDown = 1;      
+          Mouse.press();
+          //skillReset = 1;
         }
     }
 
 /*
     if(skillSwitch==0){
-        skillSelectCount = 0;
+        skillSelectCount = 0;あｓ
         skillExecCount = 0; 
         doneSkill = 0;  
         skillStopCount=0;
@@ -488,10 +437,10 @@ void loop() {
     }*/
       
     //スキル実行後、0.3秒間スキル実行停止. チャタリング防止
-    //if(doneSkill == 1 ||(skillSwitch==0 && skillSwitchPrevious==1) || (G36Switch==0 && G36SwitchPrevious==1)){
+    //if(doneSkill == 1 ||(skillSwitch==0 && skillSwitchPrevious==1) || (G36Switch==0 && G36aSwitchPrevious==1)){
         //skillStopCount++;
         //if(skillStopCount > Fs/3.0){
-    if((skillSwitch==0 && skillSwitchPrevious==1) || (G36Switch==0 && G36SwitchPrevious==1)){      
+    if((skillSwitch==0 && skillSwitchPrevious==1) || (G36Switch==0 && G36SwitchPrevious==1) || M5.BtnB.wasReleased()){      
       skillSelectCount = 0;
       skillExecCount = 0; 
       doneSkill = 0;  
@@ -499,20 +448,25 @@ void loop() {
       skillMotionCount = 0;
       //G36SwitchCnt=0;
       initialMotion ="";
+      Mouse.release(MOUSE_LEFT);
+      Mouse.release(MOUSE_BACK);
+      Mouse.release(MOUSE_FORWARD);
+      Mouse.release(MOUSE_MIDDLE);
+      Keyboard.releaseAll();
     }
   }else if(contMode=="FPS"){
     if(skillSwitch == 1 && G36Switch ==0){
-      bleMouse.click(MOUSE_LEFT);
+      Mouse.click(MOUSE_LEFT);
     }else if(skillSwitch == 0 && G36Switch ==1){
-      bleMouse.click(MOUSE_RIGHT); //長押しできないため、スコープズーム不可。キーボードで代用が良い。
+      Mouse.click(MOUSE_RIGHT); //長押しできないため、スコープズーム不可。キーボードで代用が良い。
     }
   }else if(contMode=="Mouse"){
-    if(skillStopCount == 0){
+    if(skillStopCount == 0 && viewSwitch == 0){
       if(skillSwitch == 1 && G36Switch ==0){
-        bleMouse.click(MOUSE_LEFT);
+        Mouse.click(MOUSE_LEFT);
         skillStopCount++;
       }else if(skillSwitch == 0 && G36Switch ==1){
-        bleMouse.click(MOUSE_RIGHT); //長押しできないため、スコープズーム不可。キーボードで代用が良い。
+        Mouse.click(MOUSE_RIGHT);
         skillStopCount++;
       }
     }else if(skillStopCount > Fs/5.0){
@@ -553,6 +507,7 @@ void loop() {
     // 1秒未満電源ボタンを押して離した
     if(contMode == "FEZ"){
       contMode = "FPS";
+      viewMode = "verylow";
       txFreq = 75;
     }else if(contMode == "FPS"){
       contMode = "Mouse";
@@ -569,23 +524,16 @@ void loop() {
 
   }else if(M5.BtnA.wasReleasefor(2000)){
   }else if(M5.BtnA.wasReleasefor(1000)){
-    if(handMode == "single"){
-      handMode = "double";
-      skillSelectTxTimes = 1;//ゲームパッドが接続していれば、１回送信で良い。原因不明。
-      skillExecTxTimes = 1;  
-    }else if(handMode == "double"){
-      handMode = "single2";
-      skillSelectTxTimes = 50;//ゲームパッドが接続されていない場合、最低20回必要
-      skillExecTxTimes = 50;
-    }else if(handMode == "single2"){
-      handMode = "single";
-      skillSelectTxTimes = 20;//ゲームパッドが接続されていない場合、最低20回必要
-      skillExecTxTimes = 20;
+    if(handMode == "Daiken"){
+      handMode = "Normal";
+    }else if(handMode == "Normal"){
+      handMode = "Daiken";
     }
   } else if(M5.BtnA.wasReleasefor(10)){
-    if(viewMode == "low"){ viewMode = "middle";}
+    if(viewMode == "verylow"){ viewMode = "low";}
+    else if(viewMode == "low"){ viewMode = "middle";}
     else if(viewMode == "middle"){viewMode ="high";} 
-    else if(viewMode == "high"){viewMode ="low";} 
+    else if(viewMode == "high"){viewMode ="verylow";} 
     //M5.Lcd.fillScreen(BLACK);
   }
 
@@ -611,7 +559,7 @@ void loop() {
   
     //加速度の平滑化(値にばらつきがあるため)
     accXs[acci % INTERVAL] = accX;  accYs[acci % INTERVAL] = accY;  accZs[acci % INTERVAL] = accZ;
-    acci = acci++;
+    acci += acci;
     for(int i=0; i< INTERVAL; i++){
       accX += accXs[i]; accY += accYs[i]; accZ += accZs[i];
     }
@@ -619,7 +567,7 @@ void loop() {
 
     //ジャイロの平滑化
     gyroXs[gyroi % INTERVAL] = gyroX;  gyroYs[gyroi % INTERVAL] = gyroY;  gyroZs[gyroi % INTERVAL] = gyroZ;
-    gyroi = gyroi++;
+    gyroi += gyroi;
     for(int i=0; i< INTERVAL; i++){
       gyroX += gyroXs[i]; gyroY += gyroYs[i]; gyroZ += gyroZs[i];
     }
@@ -658,7 +606,11 @@ void loop() {
       if(viewSwitchPrevious == 0 && viewSwitch == 1){
         yawRef = unwrapYaw; pitchRef = pitch;   
       }
-      x = -(unwrapYaw - yawRef)*100;  y= (pitch - pitchRef)*50;
+      if(contMode == "Mouse"){
+        x = -(unwrapYaw - yawRef)*100;  y= (pitch - pitchRef)*100;
+      }else{
+        x = -(unwrapYaw - yawRef)*100;  y= (pitch - pitchRef)*50;        
+      }
       yawRef = unwrapYaw;  pitchRef = pitch;
             
       //Serial.printf("%6.2f, %6.2f, %6.2f\r\n", roll, pitch, yaw);
@@ -686,12 +638,22 @@ void loop() {
   }
 
 /* ---視点移動判定---*/ 
-    if (txcount%(Fs/txFreq)== 0 &&  M5.BtnB.isReleased()) {
+    if (txcount%(Fs/txFreq)== 0 && viewSwitch==1 && M5.BtnB.isReleased()) {
       if(contMode=="FEZ" && (G36Switch == 1 || skillSwitch==1)){}
+      else if(contMode=="Mouse" && (skillSwitch == 0 && G36Switch ==1)){
+        if(y < -5){ 
+          Mouse.move(0,0,1);          
+        }else if(y >5){
+          Mouse.move(0,0,-1);          
+        }
+      }
       else{
          //視点スピード調整
-         if (viewMode == "low"){
-           x *= 0.33; y *=0.3;
+         if(viewMode == "verylow"){
+           x *= 0.2; y *=0.2;           
+         }
+         else if (viewMode == "low"){
+           x *= 0.33; y *=0.33;
          }else if (viewMode == "middle"){
            x *= 0.5; y *=0.5;
          }else if(viewMode = "high"){  
@@ -700,37 +662,37 @@ void loop() {
         if(viewSwitch == 1){
           if(output_data =="gyroVel"){
             //xまたはyが128以上だと座標が反転してしまうため、xまたはyを127以下にする。
-            if((abs(x) > 2 || abs(y) >2)){
+            if((abs(x) > 0 || abs(y) >0)){
               if(x>127) x=127;
               else if(x <-127) x=-127;
               if(y>127) y=127;
               else if(y<-127) y=-127;
-              bleMouse.move(x, y);
+              Mouse.move(x, y);
             }
           }else if(output_data == "rpy"){
-            if((abs(x) > 2 || abs(y) >2)){
+            if((abs(x) > 0 || abs(y) >0)){
               if(x>127) x=127;
               else if(x <-127) x=-127;
               if(y>127) y=127;
               else if(y<-127) y=-127;
-              bleMouse.move(x, y);
+              Mouse.move(x, y);
             }
           }else if(output_data == "rpy_diff"){
             //x = -(unwrapYaw - yawRef)*1000; y= (pitch - pitchRef)*200; 
             //yawRef = unwrapYaw; pitchRef = pitch;
-            if((abs(x) > 1 || abs(y) > 1)){
+            if((abs(x) > 0 || abs(y) > 0)){
               if(x>127) x=127;
               else if(x <-127) x=-127;
               if(y>127) y=127;
               else if(y<-127) y=-127;
-              bleMouse.move(x, y);
+              Mouse.move(x, y);
             }
           }else{
             if(x>127) x=127;
             else if(x <-127) x=-127;
             if(y>127) y=127;
             else if(y<-127) y=-127;
-            bleMouse.move(x, y);
+            Mouse.move(x, y);
           }
         }
       }
@@ -741,7 +703,7 @@ void loop() {
       if(joystickMode=="view"){
         x_data = Wire.read();
         y_data = Wire.read();
-        if(abs(int(x_data)-120)>5 || abs(int(y_data)-120)>5){bleMouse.move(-(int(x_data)-120), (int(y_data)-120)/2);}
+        if(abs(int(x_data)-120)>5 || abs(int(y_data)-120)>5){Mouse.move(-(int(x_data)-120), (int(y_data)-120)/2);}
         button_data = Wire.read();
         Serial.printf("x:%d y:%d button:%d\n", int(x_data), int(y_data), int(button_data));
       }else if(joystickMode=="view"){
@@ -754,22 +716,22 @@ void loop() {
     if (M5.BtnB.isReleased()  && mouseActive ==1 && (abs(x) > 0 ||  abs(y) > 0) ) {
         //M5.Lcd.setCursor(0, 100);
         //M5.Lcd.printf("%6.2f %6.2fF", x,y);
-      bleMouse.move(x, -y);
+      Mouse.move(x, -y);
     }
 */ 
     M5.update();
     if(txcount%(Fs/2)==1){
       M5.Lcd.fillScreen(BLACK);
       M5.Lcd.setCursor(0, 20, 2);
-      M5.Lcd.printf("Mode:%s ",contMode);
+      M5.Lcd.print("Mode:" + String(contMode));
       M5.Lcd.setCursor(0, 40, 2);
-      M5.Lcd.printf("Hand:%s",handMode);
+      M5.Lcd.print("Hand:" + handMode);
       M5.Lcd.setCursor(0, 60, 2);
-      M5.Lcd.printf("SkillTx:%d",skillSelectTxTimes);
+      M5.Lcd.print("SkillTx:"+ String(skillSelectTxTimes));
       M5.Lcd.setCursor(0, 80, 2);
-      M5.Lcd.printf("Out:%s",output_data);
+      M5.Lcd.print("Out:"+ output_data);
       M5.Lcd.setCursor(0, 100, 2);
-      M5.Lcd.printf("View:%s",viewMode);
+      M5.Lcd.print("View:"+viewMode);
 //      M5.Lcd.setCursor(0, 100, 2);
 //      M5.Lcd.printf("out:%s",output_data);  
     }      
