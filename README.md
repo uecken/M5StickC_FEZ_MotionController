@@ -6,7 +6,7 @@
    - Fortnite (some FPS)
    - Mouse
  - Roll/Pitch/Yaw are used to recognize XY cordinates and skill-motion by Mahony-filter.
- - [Bluetooth mouse](https://github.com/T-vK/ESP32-BLE-Mouse) are used to input XY cordinates 
+ - [Bluetooth mouse&keyboard](https://github.com/blackketter/ESP32-BLE-Combo) are used to input XY cordinates 
 ## [Youtube](https://www.youtube.com/watch?v=hiMvGo1NXqg)
 
 ## Note
