@@ -11,3 +11,4 @@
 
 ## Note
  - Should change sampleFreq from `#define sampleFreq	150.0f` to  `#define sampleFreq	150.0f` in ...\Arduino\libraries\M5StickC\src\utility\MahonyAHRS.cpp, then compile.
+ - Replace aIMU.cpp and IMU.h into Arduino\libraries\M5StickC-master\src
