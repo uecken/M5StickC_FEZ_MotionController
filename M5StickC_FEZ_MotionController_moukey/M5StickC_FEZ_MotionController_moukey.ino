@@ -206,7 +206,7 @@ void loop() {
 /* ---Roll/Pitch/Yawの計算---*/
       M5.IMU.getGyroData(&gyroX, &gyroY, &gyroZ);
       M5.IMU.getAccelData(&accX, &accY, &accZ);
-      M5.IMU.getAhrsData(&pitch,&roll,&yaw);
+      M5.IMU.getAhrsData(&pitch,&roll,&yaw,accOffsetX,accOffsetY,accOffsetZ,gyroOffsetX,gyroOffsetY,gyroOffsetZ);
       accX -= accOffsetX;
       accY -= accOffsetY;
       accZ -= accOffsetZ;
