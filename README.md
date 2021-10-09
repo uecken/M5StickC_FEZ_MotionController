@@ -1,5 +1,9 @@
 # M5StickC_FEZ_MotionController
 
+
+## Develop status
+　new version developed on vscode is here https://github.com/uecken/M5StickC_FEZ_MotionController/tree/joycon
+
 ## How to
  - This controller has 3 mode. You can change the mode by press M5-Button for 1 second.
    - Fantazy Earth Zero
