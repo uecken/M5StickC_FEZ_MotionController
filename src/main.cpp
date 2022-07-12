@@ -20,7 +20,7 @@ long gyroi = 0;
 
 
 //CLock
-int Fs =150;
+int Fs =75;
 int txFreq = 75;
 unsigned long microsPerReading, microsPrevious;
 long loop_cnt=0;
@@ -77,7 +77,7 @@ String handMode = "Daiken";
 uint8_t x_data;
 uint8_t y_data;
 uint8_t button_data;
-String contMode = "Mouse";
+String contMode = "FPS";
 //long txMoveCnt=0;
 String joystickMode = "move_wasd";
 String JoyStick_vector = "";
@@ -652,14 +652,14 @@ void loop() {
       else{
          //視点スピード調整
          if(viewMode == "verylow"){
-           x *= 0.2; y *=0.2;           
+           x *= 0.05; y *=0.05;           
          }
          else if (viewMode == "low"){
-           x *= 0.33; y *=0.33;
+           x *= 0.1; y *=0.1;
          }else if (viewMode == "middle"){
-           x *= 0.5; y *=0.5;
+           x *= 0.2; y *=0.2;
          }else if(viewMode = "high"){  
-            x *= 1; y *=1;
+            x *= 0.3; y *=0.3;
          }
         if(viewSwitch == 1){
           if(output_data =="gyroVel"){
